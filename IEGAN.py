@@ -118,25 +118,6 @@ class IEGAN(object) :
         self.disB = Discriminator(input_nc=self.img_ch, ndf=self.ch, n_layers=self.n_dis).to(self.device)
         self.encA = Encoder(3).to(self.device)
         self.encB = Encoder(3).to(self.device)
-        
-        print('-----------------------------------------------')
-        input = torch.randn([1, self.img_ch, self.img_size, self.img_size]).to(self.device)
-        macs, params = profile(self.encA, inputs=(input, ))
-        macs, params = clever_format([macs*2, params*2], "%.3f")
-        print('[Network %s] Total number of parameters: ' % 'encA', params)
-        print('[Network %s] Total number of FLOPs: ' % 'encA', macs)
-        print('-----------------------------------------------')
-        real_A_z, _ = self.encA(input)
-        macs, params = profile(self.disA, inputs=(real_A_z, ))
-        macs, params = clever_format([macs*2, params*2], "%.3f")
-        print('[Network %s] Total number of parameters: ' % 'disA', params)
-        print('[Network %s] Total number of FLOPs: ' % 'disA', macs)
-        print('-----------------------------------------------')
-        macs, params = profile(self.gen2B, inputs=(real_A_z, ))
-        macs, params = clever_format([macs*2, params*2], "%.3f")
-        print('[Network %s] Total number of parameters: ' % 'gen2B', params)
-        print('[Network %s] Total number of FLOPs: ' % 'gen2B', macs)
-        print('-----------------------------------------------')
 
         """ Define Loss """
         self.L1_loss = nn.L1Loss().to(self.device)
@@ -154,21 +135,9 @@ class IEGAN(object) :
 
         self.start_iter = 1
         if self.resume:
-            params = torch.load(os.path.join(self.result_dir, self.dataset + '_params_latest.pt'))
-            self.gen2B.load_state_dict(params['gen2B'])
-            self.gen2A.load_state_dict(params['gen2A'])
-            self.disA.load_state_dict(params['disA'])
-            self.disB.load_state_dict(params['disB'])
-            self.encA.load_state_dict(params['encA'])
-            self.encB.load_state_dict(params['encB'])
-            self.D_optim.load_state_dict(params['D_optimizer'])
-            self.G_optim.load_state_dict(params['G_optimizer'])
-            self.E_optim.load_state_dict(params['E_optimizer'])
-            self.start_iter = params['start_iter']+1
-            if self.decay_flag and self.start_iter > (self.iteration // 2):
-                    self.G_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2)) * (self.start_iter - self.iteration // 2)
-                    self.D_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2)) * (self.start_iter - self.iteration // 2)
-                    self.E_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2)) * (self.start_iter - self.iteration // 2)
+            params = torch.load('/home/kye18/temp/checkpoints/_params_3100000.pt')
+            self.encA.load_state_dict(params, False)
+            self.encB.load_state_dict(params, False)
             print("ok")
           
 
@@ -176,7 +145,7 @@ class IEGAN(object) :
         testnum = 4
         for step in range(1, self.start_iter):
             if step % self.print_freq == 0:
-                for _ in range(testnum): / 
+                for _ in range(testnum):
                     try:
                         real_A, _ = testA_iter.next()
                     except:
@@ -197,7 +166,6 @@ class IEGAN(object) :
                 self.G_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2))
                 self.D_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2))
                 self.E_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2))
-
             try:
                 real_A, _ = trainA_iter.next()
             except:
@@ -214,36 +182,36 @@ class IEGAN(object) :
             
             # Update E
             self.E_optim.zero_grad()
-            _, ae_A = self.encA(real_A)
-            _, ae_B = self.encB(real_B)
+            _, _, _, _, ae_A = self.encA(real_A)
+            _, _, _, _, ae_B = self.encB(real_B)
 
             E_loss_A = self.L1_loss(ae_A, real_A)
             E_loss_B = self.L1_loss(ae_B, real_B)
-            E_loss = E_loss_A + E_loss_B
+            E_loss = 10* (E_loss_A + E_loss_B)
             
             E_loss.backward()
             self.E_optim.step()
-            
+
             # Update D
             self.D_optim.zero_grad()
             
-            real_A_z, _ = self.encA(real_A)
-            real_B_z, _ = self.encB(real_B)
+            real_A_E1, real_A_E2, real_A_E3, real_A_E4, _ = self.encA(real_A)
+            real_B_E1, real_B_E2, real_B_E3, real_B_E4, _ = self.encB(real_B)
             
-            real_LA_logit,real_GA_logit, real_A_cam_logit, _ = self.disA(real_A_z)
-            real_LB_logit,real_GB_logit, real_B_cam_logit, _ = self.disB(real_B_z)
+            real_LA_logit,real_GA_logit, real_A_cam_logit, _ = self.disA(real_A_E1)
+            real_LB_logit,real_GB_logit, real_B_cam_logit, _ = self.disB(real_B_E1)
 
-            fake_A2B = self.gen2B(real_A_z)
-            fake_B2A = self.gen2A(real_B_z)
+            fake_A2B = self.gen2B(real_A_E1, real_A_E2, real_A_E3, real_A_E4)
+            fake_B2A = self.gen2A(real_B_E1, real_B_E2, real_B_E3, real_B_E4)
 
             fake_B2A = fake_B2A.detach()
             fake_A2B = fake_A2B.detach()
             
-            fake_A_z, _ = self.encA(fake_B2A)
-            fake_B_z, _ = self.encB(fake_A2B)
+            fake_A_E1, fake_A_E2, fake_A_E3, fake_A_E4, _ = self.encA(fake_B2A)
+            fake_B_E1, fake_B_E2, fake_B_E3, fake_B_E4, _ = self.encB(fake_A2B)
 
-            fake_LA_logit, fake_GA_logit, fake_A_cam_logit, _ = self.disA(fake_A_z)
-            fake_LB_logit, fake_GB_logit, fake_B_cam_logit, _ = self.disB(fake_B_z)
+            fake_LA_logit, fake_GA_logit, fake_A_cam_logit, _ = self.disA(fake_A_E1)
+            fake_LB_logit, fake_GB_logit, fake_B_cam_logit, _ = self.disB(fake_B_E1)
 
 
             D_ad_loss_GA = self.MSE_loss(real_GA_logit, torch.ones_like(real_GA_logit).to(self.device)) + self.MSE_loss(fake_GA_logit, torch.zeros_like(fake_GA_logit).to(self.device))
@@ -265,20 +233,20 @@ class IEGAN(object) :
             # Update G
             self.G_optim.zero_grad()
 
-            real_A_z, _ = self.encA(real_A)
-            real_B_z, _ = self.encB(real_B)
+            real_A_E1, real_A_E2, real_A_E3, real_A_E4, _ = self.encA(real_A)
+            real_B_E1, real_B_E2, real_B_E3, real_B_E4, _ = self.encB(real_B)
             
-            fake_A2B = self.gen2B(real_A_z)
-            fake_B2A = self.gen2A(real_B_z)
+            fake_A2B = self.gen2B(real_A_E1, real_A_E2, real_A_E3, real_A_E4)
+            fake_B2A = self.gen2A(real_B_E1, real_B_E2, real_B_E3, real_B_E4)
+
+            fake_A_E1, fake_A_E2, fake_A_E3, fake_A_E4, _ = self.encA(fake_B2A)
+            fake_B_E1, fake_B_E2, fake_B_E3, fake_B_E4, _ = self.encB(fake_A2B)
             
-            fake_LA_logit, fake_GA_logit, fake_A_cam_logit, _ = self.disA(fake_A_z)
-            fake_LB_logit, fake_GB_logit, fake_B_cam_logit, _ = self.disB(fake_B_z)
+            fake_LA_logit, fake_GA_logit, fake_A_cam_logit, _ = self.disA(fake_A_E1)
+            fake_LB_logit, fake_GB_logit, fake_B_cam_logit, _ = self.disB(fake_B_E1)
             
-            fake_A_z, _ = self.encA(fake_B2A)
-            fake_B_z, _ = self.encB(fake_A2B)
-            
-            fake_B2A2B = self.gen2B(fake_A_z)
-            fake_A2B2A = self.gen2A(fake_B_z)
+            fake_B2A2B = self.gen2B(fake_A_E1, fake_A_E2, fake_A_E3, fake_A_E4)
+            fake_A2B2A = self.gen2A(fake_B_E1, fake_B_E2, fake_B_E3, fake_B_E4)
 
             G_ad_loss_GA = self.MSE_loss(fake_GA_logit, torch.ones_like(fake_GA_logit).to(self.device))
             G_ad_loss_LA = self.MSE_loss(fake_LA_logit, torch.ones_like(fake_LA_logit).to(self.device))
@@ -291,8 +259,8 @@ class IEGAN(object) :
             G_cycle_loss_A = self.L1_loss(fake_A2B2A, real_A)
             G_cycle_loss_B = self.L1_loss(fake_B2A2B, real_B)
 
-            fake_A2A = self.gen2A(real_A_z)
-            fake_B2B = self.gen2B(real_B_z)
+            fake_A2A = self.gen2A(real_A_E1, real_A_E2, real_A_E3, real_A_E4)
+            fake_B2B = self.gen2B(real_B_E1, real_B_E2, real_B_E3, real_B_E4)
 
             G_recon_loss_A = self.L1_loss(fake_A2A, real_A)
             G_recon_loss_B = self.L1_loss(fake_B2B, real_B)
@@ -324,122 +292,7 @@ class IEGAN(object) :
             
             if step % self.save_freq == 0:
                 self.save(os.path.join(self.result_dir, self.dataset, 'model'), step)
-
-            if step % self.print_freq == 0:
-                print('current D_learning rate:{}'.format(self.D_optim.param_groups[0]['lr']))
-                print('current G_learning rate:{}'.format(self.G_optim.param_groups[0]['lr']))
-                print('current E_learning rate:{}'.format(self.E_optim.param_groups[0]['lr']))
-                self.save_path("_params_latest.pt",step)
-
-            if step % self.print_freq == 0:
-                train_sample_num = testnum
-                test_sample_num = testnum
-                A2B = np.zeros((self.img_size * 5, 0, 3))
-                B2A = np.zeros((self.img_size * 5, 0, 3))
-
-                self.gen2B.eval(), self.gen2A.eval(), self.disA.eval(), self.disB.eval(), self.encA.eval(), self.encB.eval()
-
-                self.gen2B,self.gen2A = self.gen2B.to('cpu'), self.gen2A.to('cpu')
-                self.disA,self.disB = self.disA.to('cpu'), self.disB.to('cpu')
-                self.encA,self.encB = self.encA.to('cpu'), self.encB.to('cpu')
-                for _ in range(train_sample_num):
-                    try:
-                        real_A, _ = trainA_iter.next()
-                    except:
-                        trainA_iter = iter(self.trainA_loader)
-                        real_A, _ = trainA_iter.next()
-
-                    try:
-                        real_B, _ = trainB_iter.next()
-                    except:
-                        trainB_iter = iter(self.trainB_loader)
-                        real_B, _ = trainB_iter.next()
-                    real_A, real_B = real_A.to('cpu'), real_B.to('cpu')
-                    # real_A, real_B = real_A.to(self.device), real_B.to(self.device)
-                    
-                    real_A_z, _ = self.encA(real_A)
-                    real_B_z, _ = self.encB(real_B)
-                    _, _,  _, A_heatmap = self.disA(real_A_z)
-                    _, _,  _, B_heatmap = self.disB(real_B_z)
-
-                    fake_A2B = self.gen2B(real_A_z)
-                    fake_B2A = self.gen2A(real_B_z)
-
-                    fake_A_z, _ = self.encA(fake_B2A)
-                    fake_B_z, _ = self.encB(fake_A2B)
-
-                    fake_B2A2B = self.gen2B(fake_A_z)
-                    fake_A2B2A = self.gen2A(fake_B_z)
-
-                    fake_A2A = self.gen2A(real_A_z)
-                    fake_B2B = self.gen2B(real_B_z)
-
-                    A2B = np.concatenate((A2B, np.concatenate((RGB2BGR(tensor2numpy(denorm(real_A[0]))),
-                                                               cam(tensor2numpy(A_heatmap[0]), self.img_size),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_A2A[0]))),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_A2B[0]))),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_A2B2A[0])))), 0)), 1)
-
-                    B2A = np.concatenate((B2A, np.concatenate((RGB2BGR(tensor2numpy(denorm(real_B[0]))),
-                                                               cam(tensor2numpy(B_heatmap[0]), self.img_size),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_B2B[0]))),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_B2A[0]))),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_B2A2B[0])))), 0)), 1)
-
-                for _ in range(test_sample_num):
-                    try:
-                        real_A, _ = testA_iter.next()
-                    except:
-                        testA_iter = iter(self.testA_loader)
-                        real_A, _ = testA_iter.next()
-
-                    try:
-                        real_B, _ = testB_iter.next()
-                    except:
-                        testB_iter = iter(self.testB_loader)
-                        real_B, _ = testB_iter.next()
-                    real_A, real_B = real_A.to('cpu'), real_B.to('cpu')
-                    # real_A, real_B = real_A.to(self.device), real_B.to(self.device)
-
-                    real_A_z, _ = self.encA(real_A)
-                    real_B_z, _ = self.encB(real_B)
-                    _, _,  _, A_heatmap = self.disA(real_A_z)
-                    _, _,  _, B_heatmap = self.disB(real_B_z)
-
-                    fake_A2B = self.gen2B(real_A_z)
-                    fake_B2A = self.gen2A(real_B_z)
-
-                    fake_A_z, _ = self.encA(fake_B2A)
-                    fake_B_z, _ = self.encB(fake_A2B)
-                    
-                    fake_B2A2B = self.gen2B(fake_A_z)
-                    fake_A2B2A = self.gen2A(fake_B_z)
-
-                    fake_A2A = self.gen2A(real_A_z)
-                    fake_B2B = self.gen2B(real_B_z)
-
-                    A2B = np.concatenate((A2B, np.concatenate((RGB2BGR(tensor2numpy(denorm(real_A[0]))),
-                                                               cam(tensor2numpy(A_heatmap[0]), self.img_size),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_A2A[0]))),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_A2B[0]))),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_A2B2A[0])))), 0)), 1)
-
-                    B2A = np.concatenate((B2A, np.concatenate((RGB2BGR(tensor2numpy(denorm(real_B[0]))),
-                                                               cam(tensor2numpy(B_heatmap[0]), self.img_size),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_B2B[0]))),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_B2A[0]))),
-                                                               RGB2BGR(tensor2numpy(denorm(fake_B2A2B[0])))), 0)), 1)
-
-                cv2.imwrite(os.path.join(self.result_dir, self.dataset, 'img', 'A2B_%07d.png' % step), A2B * 255.0)
-                cv2.imwrite(os.path.join(self.result_dir, self.dataset, 'img', 'B2A_%07d.png' % step), B2A * 255.0)
                 
-
-                self.gen2B,self.gen2A = self.gen2B.to(self.device), self.gen2A.to(self.device)
-                self.disA,self.disB = self.disA.to(self.device), self.disB.to(self.device)
-                self.encA,self.encB = self.encA.to(self.device), self.encB.to(self.device)
-                
-                self.gen2B.train(), self.gen2A.train(), self.disA.train(), self.disB.train(), self.encA.train(), self.encB.train()
-
     def save(self, dir, step):
         params = {}
         params['gen2B'] = self.gen2B.state_dict()
@@ -450,6 +303,7 @@ class IEGAN(object) :
         params['encB'] = self.encB.state_dict()
         params['D_optimizer'] = self.D_optim.state_dict()
         params['G_optimizer'] = self.G_optim.state_dict()
+        params['E_optimizer'] = self.E_optim.state_dict()
         params['start_iter'] = step
         torch.save(params, os.path.join(dir, self.dataset + '_params_%07d.pt' % step))
 
@@ -464,11 +318,12 @@ class IEGAN(object) :
         params['encB'] = self.encB.state_dict()
         params['D_optimizer'] = self.D_optim.state_dict()
         params['G_optimizer'] = self.G_optim.state_dict()
+        params['E_optimizer'] = self.E_optim.state_dict()
         params['start_iter'] = step
         torch.save(params, os.path.join(self.result_dir, self.dataset + path_g))
 
     def load(self):
-        params = torch.load(os.path.join(self.result_dir, self.dataset + '_params_latest.pt'))
+        params = torch.load(os.path.join(self.result_dir, self.dataset, 'model', self.dataset + '_params_0100000.pt'))
         self.gen2B.load_state_dict(params['gen2B'])
         self.gen2A.load_state_dict(params['gen2A'])
         self.disA.load_state_dict(params['disA'])
@@ -477,6 +332,7 @@ class IEGAN(object) :
         self.encB.load_state_dict(params['encB'])
         self.D_optim.load_state_dict(params['D_optimizer'])
         self.G_optim.load_state_dict(params['G_optimizer'])
+        self.E_optim.load_state_dict(params['E_optimizer'])
         self.start_iter = params['start_iter']
 
     def test(self):
@@ -486,8 +342,8 @@ class IEGAN(object) :
         self.gen2B.eval(), self.gen2A.eval(), self.disA.eval(),self.disB.eval(),self.encA.eval(),self.encB.eval()
         for n, (real_A, real_A_path) in enumerate(self.testA_loader):
             real_A = real_A.to(self.device)
-            real_A_z = self.encA(real_A)
-            fake_A2B = self.gen2B(real_A_z)
+            real_A_E1, real_A_E2, real_A_E3, real_A_E4, _ = self.encA(real_A)
+            fake_A2B = self.gen2B(real_A_E1, real_A_E2, real_A_E3, real_A_E4)
 
             A2B = RGB2BGR(tensor2numpy(denorm(fake_A2B[0])))
             print(real_A_path[0])
@@ -495,8 +351,8 @@ class IEGAN(object) :
 
         for n, (real_B, real_B_path) in enumerate(self.testB_loader):
             real_B = real_B.to(self.device)
-            real_B_z = self.encB(real_B)
-            fake_B2A = self.gen2A(real_B_z)
+            real_B_E1, real_B_E2, real_B_E3, real_B_E4, _ = self.encB(real_B)
+            fake_B2A = self.gen2A(real_B_E1, real_B_E2, real_B_E3, real_B_E4)
 
             B2A = RGB2BGR(tensor2numpy(denorm(fake_B2A[0])))
             print(real_B_path[0])

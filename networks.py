@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.nn.parameter import Parameter
-
+from torchvision import models
+from linear_attention_transformer import ImageLinearAttention
 
 class ResnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, n_blocks=6, img_size=256, light=False):
@@ -14,11 +15,19 @@ class ResnetGenerator(nn.Module):
         self.img_size = img_size
         self.light = light
 
+        self.Hiera4 = self.hierarchical(4)
+        self.Hiera3 = self.hierarchical(3)
+        self.Hiera2 = self.hierarchical(2)
+        self.Hiera1 = self.hierarchical(1)
+        self.conv_up3 = convrelu(512, 256, 3, 1)
+        self.conv_up2 = convrelu(256, 128, 3, 1)
+        self.conv_up1 = convrelu(128, 64, 3, 1)
+        
         n_downsampling = 2
-
         mult = 2**n_downsampling
+
         UpBlock0 = [nn.ReflectionPad2d(1),
-                nn.Conv2d(int(ngf * mult / 2), ngf * mult, kernel_size=3, stride=1, padding=0, bias=True),
+                nn.Conv2d(int(ngf * mult / 4), ngf * mult, kernel_size=3, stride=1, padding=0, bias=True),
                 ILN(ngf * mult),
                 nn.ReLU(True)]
 
@@ -70,10 +79,32 @@ class ResnetGenerator(nn.Module):
         self.FC = nn.Sequential(*FC)
         self.UpBlock0 = nn.Sequential(*UpBlock0)
         self.UpBlock2 = nn.Sequential(*UpBlock2)
+    
+    def hierarchical(self,mult):
+        ngf = 64
+        mult = 2 ** (mult-1)
+        Hiera = [nn.ReflectionPad2d(1),   
+                         nn.Conv2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=1, padding=0, bias=False),
+                         ILN(int(ngf * mult / 2)),
+                         nn.ReLU(True),
+                         nn.Conv2d(int(ngf * mult / 2), int(ngf * mult / 2)*4, kernel_size=1, stride=1, bias=True),
+                         nn.PixelShuffle(2),
+                         ILN(int(ngf * mult / 2)),
+                         nn.ReLU(True)
+                         ]
+        return nn.Sequential(*Hiera)
 
-    def forward(self, z):
-        x = z
-        x = self.UpBlock0(x)
+    def forward(self, E1, E2, E3, E4):
+        E4 = self.Hiera4(E4)  # 16,16,256
+        E3 = torch.cat([E4,E3],dim=1)  # 16,16,512
+        E3 = self.conv_up3(E3)  # 16,16,256  
+        E3 = self.Hiera3(E3)  # 32,32,128 
+        E2 = torch.cat([E3,E2],dim=1)  # 32,32,256 
+        E2 = self.conv_up2(E2)  # 32,32,128 
+        E2 = self.Hiera2(E2)  # 64,64,64 
+        E1 = torch.cat([E2,E1],dim=1)  # 64,64,128
+        E1 = self.conv_up1(E1)  # 64,64,64
+        x = self.UpBlock0(E1)
 
         if self.light:
             x_ = torch.nn.functional.adaptive_avg_pool2d(x, 1)
@@ -87,26 +118,6 @@ class ResnetGenerator(nn.Module):
 
         out = self.UpBlock2(x)
 
-        return out
-
-
-class ResnetBlock(nn.Module):
-    def __init__(self, dim, use_bias):
-        super(ResnetBlock, self).__init__()
-        conv_block = []
-        conv_block += [nn.ReflectionPad2d(1),
-                       nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=0, bias=use_bias),
-                       nn.InstanceNorm2d(dim),
-                       nn.ReLU(True)]
-
-        conv_block += [nn.ReflectionPad2d(1),
-                       nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=0, bias=use_bias),
-                       nn.InstanceNorm2d(dim)]
-
-        self.conv_block = nn.Sequential(*conv_block)
-
-    def forward(self, x):
-        out = x + self.conv_block(x)
         return out
 
 
@@ -285,6 +296,11 @@ class Discriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=7):
         super(Discriminator, self).__init__()
 
+        model = [nn.ReflectionPad2d(1),
+                nn.utils.spectral_norm(
+                nn.Conv2d(int(ndf), ndf * 2, kernel_size=3, stride=1, padding=0, bias=True)),
+                nn.LeakyReLU(0.2, True)]
+        
         # Class Activation Map
         mult = 2 ** (1)
         self.fc = nn.utils.spectral_norm(nn.Linear(ndf * mult * 2, 1, bias=False))
@@ -331,14 +347,14 @@ class Discriminator(nn.Module):
 
         # self.attn = Self_Attn( ndf * mult)
         self.pad = nn.ReflectionPad2d(1)
-
+        self.model = nn.Sequential(*model)
         self.Dis0_0 = nn.Sequential(*Dis0_0)
         self.Dis0_1 = nn.Sequential(*Dis0_1)
         self.Dis1_0 = nn.Sequential(*Dis1_0)
         self.Dis1_1 = nn.Sequential(*Dis1_1)
 
     def forward(self, input):
-        x = input
+        x = self.model(input)
 
         x_0 = x
 
@@ -370,47 +386,112 @@ class Discriminator(nn.Module):
         
         return out0, out1, cam_logit, heatmap
 
+def convrelu(in_channels, out_channels, kernel, padding):
+    return nn.Sequential(
+        nn.Conv2d(in_channels, out_channels, kernel, padding=padding),
+        nn.ReLU(inplace=True),
+    )
+    
+class Residual(nn.Module):
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+    def forward(self, x):
+        return self.fn(x) + x
+        
+class Rezero(nn.Module):
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+        self.g = nn.Parameter(torch.zeros(1))
+    def forward(self, x):
+        return self.fn(x) * self.g
+        
+attn_and_ff = lambda chan: nn.Sequential(*[
+    Residual(Rezero(ImageLinearAttention(chan, norm_queries = True))),
+    Residual(Rezero(nn.Sequential(nn.Conv2d(chan, chan * 2, 1), nn.LeakyReLU(0.2, True), nn.Conv2d(chan * 2, chan, 1))))
+])
 
 class Encoder(nn.Module):
-    def __init__(self, input_nc, ndf=64, ngf=64):
-        super(Encoder, self).__init__()
-        downsample = [nn.ReflectionPad2d(1),
-                 nn.utils.spectral_norm(
-                     nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=0, bias=True)),
-                 nn.LeakyReLU(0.2, True)]  # 1+3*2^0 =4
+    def __init__(self, n_class):
+        super().__init__()
 
-        for i in range(1, 2):  # 1+3*2^0 + 3*2^1 =10
-            mult = 2 ** (i - 1)
-            downsample += [nn.ReflectionPad2d(1),
-                      nn.utils.spectral_norm(
-                          nn.Conv2d(ndf * mult, ndf * mult * 2, kernel_size=4, stride=2, padding=0, bias=True)),
-                      nn.LeakyReLU(0.2, True)]
-        n_downsampling = 2
-        mult = 2 ** n_downsampling
-        upsample = [nn.ReflectionPad2d(1),
-                  nn.Conv2d(int(ngf * mult / 2), ngf * mult, kernel_size=3, stride=1, padding=0, bias=True),
-                  ILN(ngf * mult),
-                  nn.ReLU(True)]
+        self.base_model = models.resnet18(pretrained=True)
+        self.base_layers = list(self.base_model.children())
 
-        for i in range(n_downsampling):
-            mult = 2 ** (n_downsampling - i)
-            upsample += [nn.ReflectionPad2d(1),
-                      nn.Conv2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=1, padding=0, bias=False),
-                      ILN(int(ngf * mult / 2)),
-                      nn.ReLU(True),
-                      nn.Conv2d(int(ngf * mult / 2), int(ngf * mult / 2) * 4, kernel_size=1, stride=1, bias=True),
-                      nn.PixelShuffle(2),
-                      ILN(int(ngf * mult / 2)),
-                      nn.ReLU(True)
-                      ]
-        upsample += [nn.ReflectionPad2d(3),
-                  nn.Conv2d(ngf, 3, kernel_size=7, stride=1, padding=0, bias=False),
-                  nn.Tanh()]
-        self.downsample = nn.Sequential(*downsample)
-        self.upsample = nn.Sequential(*upsample)
+        self.layer0 = nn.Sequential(*self.base_layers[:3]) # size=(N, 64, x.H/2, x.W/2)
+        self.layer0_1x1 = convrelu(64, 64, 1, 0)
+        self.layer1 = nn.Sequential(*self.base_layers[3:5]) # size=(N, 64, x.H/4, x.W/4)
+        self.layer1_1x1 = convrelu(64, 64, 1, 0)
+        self.layer2 = self.base_layers[5]  # size=(N, 128, x.H/8, x.W/8)
+        self.layer2_1x1 = convrelu(128, 128, 1, 0)
+        self.layer3 = self.base_layers[6]  # size=(N, 256, x.H/16, x.W/16)
+        self.layer3_1x1 = convrelu(256, 256, 1, 0)
+        self.layer4 = self.base_layers[7]  # size=(N, 512, x.H/32, x.W/32)
+        self.layer4_1x1 = convrelu(512, 512, 1, 0)
+        
+        self.attn_fn1 = attn_and_ff(64)
+        self.attn_fn2 = attn_and_ff(128)
+        self.attn_fn3 = attn_and_ff(256)
+        self.attn_fn4 = attn_and_ff(512)
 
-    def forward(self, x):
-        z = self.downsample(x)
-        out = self.upsample(z)
-        return z, out
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
 
+        self.conv_up3 = convrelu(256 + 512, 512, 3, 1)
+        self.conv_up2 = convrelu(128 + 512, 256, 3, 1)
+        self.conv_up1 = convrelu(64 + 256, 256, 3, 1)
+        self.conv_up0 = convrelu(64 + 256, 128, 3, 1)
+
+        self.conv_original_size0 = convrelu(3, 64, 3, 1)
+        self.conv_original_size1 = convrelu(64, 64, 3, 1)
+        self.conv_original_size2 = convrelu(64 + 128, 64, 3, 1)
+
+        self.conv_last = nn.Conv2d(64, n_class, 1)
+
+
+    def forward(self, input):
+        x_original = self.conv_original_size0(input)
+        x_original = self.conv_original_size1(x_original)
+
+        layer0 = self.layer0(input)
+        layer1 = self.layer1(layer0)
+        E1 = layer1
+        layer1 = self.attn_fn1(layer1)
+        layer2 = self.layer2(layer1)
+        E2 = layer2
+        layer2 = self.attn_fn2(layer2)
+        layer3 = self.layer3(layer2)
+        E3 = layer3
+        layer3 = self.attn_fn3(layer3)
+        layer4 = self.layer4(layer3)
+        E4 = layer4
+        layer4 = self.attn_fn4(layer4)
+
+        layer4 = self.layer4_1x1(layer4)
+        x = self.upsample(layer4)
+        layer3 = self.layer3_1x1(layer3)
+        x = torch.cat([x, layer3], dim=1)
+        x = self.conv_up3(x)
+
+        x = self.upsample(x)
+        layer2 = self.layer2_1x1(layer2)
+        x = torch.cat([x, layer2], dim=1)
+        x = self.conv_up2(x)
+
+        x = self.upsample(x)
+        layer1 = self.layer1_1x1(layer1)
+        x = torch.cat([x, layer1], dim=1)
+        x = self.conv_up1(x)
+
+        x = self.upsample(x)
+        layer0 = self.layer0_1x1(layer0)
+        x = torch.cat([x, layer0], dim=1)
+        x = self.conv_up0(x)
+
+        x = self.upsample(x)
+        x = torch.cat([x, x_original], dim=1)
+        x = self.conv_original_size2(x)
+
+        out = self.conv_last(x)
+
+        return E1, E2, E3, E4, out
