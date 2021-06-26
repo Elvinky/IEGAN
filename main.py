@@ -1,4 +1,4 @@
-from NICE import NICE
+from IEGAN import IEGAN
 import argparse
 from utils import *
 
