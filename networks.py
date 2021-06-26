@@ -34,16 +34,11 @@ class ResnetGenerator(nn.Module):
         self.relu = nn.ReLU(True)
 
         # Gamma, Beta block
-        if self.light:
-            FC = [nn.Linear(ngf * mult, ngf * mult, bias=False),
-                  nn.ReLU(True),
-                  nn.Linear(ngf * mult, ngf * mult, bias=False),
-                  nn.ReLU(True)]
-        else:
-            FC = [nn.Linear(img_size // mult * img_size // mult * ngf * mult, ngf * mult, bias=False),
-                  nn.ReLU(True),
-                  nn.Linear(ngf * mult, ngf * mult, bias=False),
-                  nn.ReLU(True)]
+        
+        FC = [nn.Linear(ngf * mult, ngf * mult, bias=False),
+              nn.ReLU(True),
+              nn.Linear(ngf * mult, ngf * mult, bias=False),
+              nn.ReLU(True)]
         self.gamma = nn.Linear(ngf * mult, ngf * mult, bias=False)
         self.beta = nn.Linear(ngf * mult, ngf * mult, bias=False)
 
@@ -106,11 +101,8 @@ class ResnetGenerator(nn.Module):
         E1 = self.conv_up1(E1)  # 64,64,64
         x = self.UpBlock0(E1)
 
-        if self.light:
-            x_ = torch.nn.functional.adaptive_avg_pool2d(x, 1)
-            x_ = self.FC(x_.view(x_.shape[0], -1))
-        else:
-            x_ = self.FC(x.view(x.shape[0], -1))
+        x_ = torch.nn.functional.adaptive_avg_pool2d(x, 1)
+        x_ = self.FC(x_.view(x_.shape[0], -1))
         gamma, beta = self.gamma(x_), self.beta(x_)
 
         for i in range(self.n_blocks):

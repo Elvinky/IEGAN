@@ -68,7 +68,7 @@ def main():
       exit()
 
     # open session
-    gan = NICE(args)
+    gan = IEGAN(args)
 
     # build graph
     gan.build_model()
