@@ -9,14 +9,10 @@ from glob import glob
 from thop import profile
 from thop import clever_format
 
-class NICE(object) :
+class IEGAN(object) :
     def __init__(self, args):
         self.light = args.light
-
-        if self.light :
-            self.model_name = 'NICE_light'
-        else :
-            self.model_name = 'NICE'
+        self.model_name = 'IEGAN'
 
         self.result_dir = args.result_dir
         self.dataset = args.dataset
