@@ -135,12 +135,21 @@ class IEGAN(object) :
 
         self.start_iter = 1
         if self.resume:
-            params = torch.load('/home/kye18/temp/checkpoints/_params_3100000.pt')
-            self.encA.load_state_dict(params, False)
-            self.encB.load_state_dict(params, False)
+            params = torch.load(os.path.join(self.result_dir, self.dataset + '_params_latest.pt'))
+            self.gen2B.load_state_dict(params['gen2B'])
+            self.gen2A.load_state_dict(params['gen2A'])
+            self.disA.load_state_dict(params['disA'])
+            self.disB.load_state_dict(params['disB'])
+            self.encA.load_state_dict(params['encA'])
+            self.encB.load_state_dict(params['encB'])
+            self.D_optim.load_state_dict(params['D_optimizer'])
+            self.G_optim.load_state_dict(params['G_optimizer'])
+            self.start_iter = params['start_iter']+1
+            if self.decay_flag and self.start_iter > (self.iteration // 2):
+                    self.G_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2)) * (self.start_iter - self.iteration // 2)
+                    self.D_optim.param_groups[0]['lr'] -= (self.lr / (self.iteration // 2)) * (self.start_iter - self.iteration // 2)
             print("ok")
           
-
         # training loop
         testnum = 4
         for step in range(1, self.start_iter):
@@ -323,7 +332,7 @@ class IEGAN(object) :
         torch.save(params, os.path.join(self.result_dir, self.dataset + path_g))
 
     def load(self):
-        params = torch.load(os.path.join(self.result_dir, self.dataset, 'model', self.dataset + '_params_0100000.pt'))
+        params = torch.load(os.path.join(self.result_dir, self.dataset, 'model', self.dataset + '_params_latest.pt'))
         self.gen2B.load_state_dict(params['gen2B'])
         self.gen2A.load_state_dict(params['gen2A'])
         self.disA.load_state_dict(params['disA'])
