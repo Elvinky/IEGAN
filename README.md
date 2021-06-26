@@ -40,3 +40,42 @@ Kai Ye, Yinru Ye, Minqiang Yang, Bin Hu
 * Pytorch 1.2.0 and torchvision 0.4.0 (https://pytorch.org/)
 * linear_attention_transformer
 * CUDA 10.0.130, CuDNN 7.6, and CentOS 7.8.
+
+### Train
+```
+> CUDA_VISIBLE_DEVICES=X python3 main.py --dataset=cat2dog
+```
+* **X** choose the GPU to use
+
+### Restoring from the previous checkpoint
+```
+> CUDA_VISIBLE_DEVICES=X python3 main.py --dataset cat2dog --resume True
+```
+* Previous checkpoint:  **dataset**_params_latest.pt
+
+* Trained models():
+Our previous checkpoint on cat2dog can be downloaded from https://pan.baidu.com/s/1IlTCVg5DC2klR4mRTo-mCw Extraction code: yeyr.
+
+### Test
+```
+> python3 main.py --dataset cat2dog --phase test
+```
+
+### Metric
+```
+> CUDA_VISIBLE_DEVICES=X python3 fid_kid.py testA fakeA --mmd-var 
+```
+* You can use gpu, set `X` to **the index of gpu**, such as `CUDA_VISIBLE_DEVICES=0`
+
+## Network
+<div align="center">
+  <img src = './figure/struct.png' width = '1231px' height = '718px'>
+</div>
+
+## Comparison
+<div align="center">
+  <img src = './figure/compare.png' width = '989px' height = '1028px'>
+</div>
+
+## Acknowledgments
+Our code is inspired by [NICE-GAN-pytorch](https://github.com/alpc91/NICE-GAN-pytorch).
