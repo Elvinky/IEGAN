@@ -11,7 +11,7 @@
 
 ## Author
 Kai Ye, Yinru Ye, Minqiang Yang, Bin Hu
-[Ubiquitous Awareness and Intelligent Solutions Lab](https://uais.lzu.edu.cn)
+[[Ubiquitous Awareness and Intelligent Solutions Lab]](https://uais.lzu.edu.cn)
 
 ## Usage
 ```
