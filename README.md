@@ -2,7 +2,7 @@
 ### Independent Encoder for Deep Hierarchical Unsupervised Image-to-Image Translation
 
 <div align="center">
-  <img src="./figure/contour_figure.png" width = '586px' height = '367px'>
+  <img src="./figure/contour_figure.png" width = '1469px' height = '491px'>
 </div>
 
 > **Independent Encoder for Deep Hierarchical Unsupervised Image-to-Image Translation**<br>
