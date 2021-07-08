@@ -41,6 +41,10 @@ Kai Ye, Yinru Ye, Minqiang Yang, Bin Hu
 * linear_attention_transformer
 * CUDA 10.0.130, CuDNN 7.6, and CentOS 7.8.
 
+### GPU memory occupied size
+
+* In the actual situation of using Tesla P100, IEGAN will occupy `9709`MiB
+
 ### Train
 ```
 > CUDA_VISIBLE_DEVICES=X python3 main.py --dataset=cat2dog
