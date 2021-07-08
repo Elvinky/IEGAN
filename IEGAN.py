@@ -11,7 +11,6 @@ from thop import clever_format
 
 class IEGAN(object) :
     def __init__(self, args):
-        self.light = args.light
         self.model_name = 'IEGAN'
 
         self.result_dir = args.result_dir
@@ -58,7 +57,6 @@ class IEGAN(object) :
         print()
 
         print("##### Information #####")
-        print("# light : ", self.light)
         print("# dataset : ", self.dataset)
         print("# batch_size : ", self.batch_size)
         print("# iteration per epoch : ", self.iteration)
@@ -112,8 +110,8 @@ class IEGAN(object) :
         self.testB_loader = DataLoader(self.testB, batch_size=1, shuffle=False,pin_memory=True)
 
         """ Define Generator, Discriminator """
-        self.gen2B = ResnetGenerator(input_nc=self.img_ch, output_nc=self.img_ch, ngf=self.ch, n_blocks=self.n_res, img_size=self.img_size, light=self.light).to(self.device)
-        self.gen2A = ResnetGenerator(input_nc=self.img_ch, output_nc=self.img_ch, ngf=self.ch, n_blocks=self.n_res, img_size=self.img_size, light=self.light).to(self.device)
+        self.gen2B = ResnetGenerator(input_nc=self.img_ch, output_nc=self.img_ch, ngf=self.ch, n_blocks=self.n_res, img_size=self.img_size).to(self.device)
+        self.gen2A = ResnetGenerator(input_nc=self.img_ch, output_nc=self.img_ch, ngf=self.ch, n_blocks=self.n_res, img_size=self.img_size).to(self.device)
         self.disA = Discriminator(input_nc=self.img_ch, ndf=self.ch, n_layers=self.n_dis).to(self.device)
         self.disB = Discriminator(input_nc=self.img_ch, ndf=self.ch, n_layers=self.n_dis).to(self.device)
         self.encA = Encoder(3).to(self.device)

@@ -5,7 +5,7 @@ from torchvision import models
 from linear_attention_transformer import ImageLinearAttention
 
 class ResnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=6, img_size=256, light=False):
+    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=6, img_size=256):
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
         self.input_nc = input_nc
@@ -13,7 +13,6 @@ class ResnetGenerator(nn.Module):
         self.ngf = ngf
         self.n_blocks = n_blocks
         self.img_size = img_size
-        self.light = light
 
         self.Hiera4 = self.hierarchical(4)
         self.Hiera3 = self.hierarchical(3)
