@@ -5,10 +5,9 @@ from utils import *
 """parsing and configuration"""
 
 def parse_args():
-    desc = "Pytorch implementation of NICE-GAN"
+    desc = "Pytorch implementation of IEGAN"
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('--phase', type=str, default='train', help='[train / test]')
-    parser.add_argument('--light', type=str2bool, default=False, help='[NICE-GAN full version / NICE-GAN light version]')
     parser.add_argument('--dataset', type=str, default='YOUR_DATASET_NAME', help='dataset_name')
 
     parser.add_argument('--iteration', type=int, default=300000, help='The number of training iterations')
