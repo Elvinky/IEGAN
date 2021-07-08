@@ -1,5 +1,5 @@
 ## IEGAN &mdash; Official PyTorch Implementation
-### Independent Encoder for Deep Hierarchical Unsupervised Image-to-Image Translation [[Paper]](./paper/iegan.pdf)
+### Independent Encoder for Deep Hierarchical Unsupervised Image-to-Image Translation [[Paper]](https://arxiv.org/abs/2107.02494)
 
 <div align="center">
   <img src="./figure/contour_figure.png" width = '1469px' height = '491px'>
